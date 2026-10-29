@@ -1,0 +1,281 @@
+name: Patch Official APK (Ultimate Hybrid Build)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  patch-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 zip unzip default-jre
+          wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar -O apktool.jar
+          wget -q https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar -O uber-signer.jar
+
+
+      - name: Download Official APK
+        run: |
+          # =====================================================================
+          # [선택 1] 특정 버전 고정 다운로드 (현재 활성화됨 - 2.1.2 버전)
+          # 최신 버전의 고스팅/프레임 드랍 등 불안정성 회피용
+          # =====================================================================
+          TARGET_URL=$(curl -s https://api.github.com/repos/ducvd89/Bloodborne-Android/releases/tags/android-2.1.2 | grep "browser_download_url.*\.apk" | cut -d '"' -f 4 | head -n 1)
+          wget -q $TARGET_URL -O original.apk
+
+          # =====================================================================
+          # [선택 2] 최신 버전 자동 다운로드 (현재 주석 처리됨)
+          # 최신 버전으로 롤백하거나 테스트할 때 아래 2줄의 주석(#)을 풀고, 위의 [선택 1]을 주석 처리하세요.
+          # =====================================================================
+          # LATEST_URL=$(curl -s https://api.github.com/repos/ducvd89/Bloodborne-Android/releases/latest | grep "browser_download_url.*\.apk" | cut -d '"' -f 4 | head -n 1)
+          # wget -q $LATEST_URL -O original.apk
+
+      - name: Decompile APK & Smali Hardcode Hack
+        run: |
+          # [★apktool.jar 없어서 터지는 거 방지용 다운로드 추가★]
+          curl -L -o apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
+          java -jar apktool.jar d original.apk -o BB_mod
+
+          ORIG_PKG=$(grep -o 'package="[^"]*"' BB_mod/AndroidManifest.xml | head -n 1 | cut -d'"' -f2)
+          NEW_PKG="com.kor.bbhunter77"
+          sed -i "s/package=\"$ORIG_PKG\"/package=\"$NEW_PKG\"/g" BB_mod/AndroidManifest.xml
+          sed -i "s/renameManifestPackage:.*/renameManifestPackage: $NEW_PKG/g" BB_mod/apktool.yml
+
+          mkdir -p BB_mod/smali/com/kor/bbhunter77
+          cat << 'EOF' > BB_mod/smali/com/kor/bbhunter77/Bypass.smali
+          .class public Lcom/kor/bbhunter77/Bypass;
+          .super Ljava/lang/Object;
+          EOF
+
+          # [🔥 야남 전용 슬로우모션 방지 개조 🔥]
+          # UI에서 'Keep game speed' 하한선을 20에서 10로 강제 하향
+          find BB_mod -name "SettingsDialog*.smali" -exec sed -i 's/"20"/"10"/g' {} + || true
+
+      - name: Force On-Screen Controller Default to True
+        run: |
+          cat << 'EOF' > patch_controller.py
+          import re, glob
+
+          # 쪼개진 smali 폴더 전체에서 MainActivity*.smali 탐색
+          for smali_file in glob.glob("BB_mod/smali*/ro/cobrabm/fexdroid/MainActivity*.smali"):
+              with open(smali_file, "r") as f:
+                  code = f.read()
+
+              # getBoolean("controller_overlay", ...) 호출부를 정확히 낚아챔
+              pattern = re.compile(r'(const-string\s+([vp]\d+),\s*"controller_overlay".*?)((?:invoke-interface|invoke-virtual).*?Landroid/content/SharedPreferences;->getBoolean\(Ljava/lang/String;Z\)Z)', re.DOTALL)
+
+              def repl(m):
+                  prefix = m.group(1)
+                  invoke_stmt = m.group(3)
+                  # {vA, vB, vC} 형태에서 3번째 레지스터(디폴트값) 추출
+                  regs = re.search(r'\{([vp]\d+),\s*([vp]\d+),\s*([vp]\d+)\}', invoke_stmt)
+                  if regs:
+                      fallback_reg = regs.group(3)
+                      # getBoolean 실행 직전에 해당 레지스터에 0x1(true)을 강제로 덮어씌움
+                      return f"{prefix}\n    const/4 {fallback_reg}, 0x1\n    {invoke_stmt}"
+                  return m.group(0)
+
+              new_code = pattern.sub(repl, code)
+              with open(smali_file, "w") as f:
+                  f.write(new_code)
+          EOF
+          python3 patch_controller.py
+
+      - name: Prepare XML & Build Custom Patch
+        run: |
+          touch out_eboot.elf
+          sed -i 's/segments = patches.eboot_segments(args.eboot.read_bytes())/segments = [(0, 0x10000000)]/g' tools/android/build_patch_parts.py
+          sed -i 's/raise SystemExit/pass #/g' tools/android/build_patch_parts.py
+
+          # [핵심 1] 3개 패치 모두 XML에 추가 (boot-linked.bin 영구 공구리 방지를 위해 isEnabled="false")
+          sed -i 's/<\/Patch>//g' patches/Bloodborne.xml
+          cat << 'EOF' >> patches/Bloodborne.xml
+              <Metadata Title="Bloodborne" Name="region_unlock=1" Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+                  <PatchList>
+                      <Line Type="bytes" Address="0x023b9190" Value="b805000000c3"/>
+                      <Line Type="bytes" Address="0x023B8730" Value="31C0C3909090909090909090909090"/>
+                      <Line Type="bytes" Address="0x01C2C890" Value="31C0C3909090909090909090909090"/>
+                  </PatchList>
+              </Metadata>
+              <Metadata Title="Bloodborne" Name="doll_rebirth=1" Author="VVV212" PatchVer="1.0.2" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+                  <PatchList>
+                      <Line Type="bytes" Address="0x0243a65c" Value="FD040000"/>
+                      <Line Type="bytes" Address="0x0243a674" Value="EDF6FFFF"/>
+                      <Line Type="bytes" Address="0x0243a878" Value="D932FFFF"/>
+                      <Line Type="bytes" Address="0x0243ab21" Value="8B8790000000C3"/>
+                      <Line Type="bytes" Address="0x02439d11" Value="0FB687CE000000C3"/>
+                      <Line Type="bytes" Address="0x0242db01" Value="53415441554889FBE9E3030000"/>
+                      <Line Type="bytes" Address="0x0242def1" Value="4189D4448BAB90000000E9A10F0000"/>
+                      <Line Type="bytes" Address="0x0242eea1" Value="4539E50F8EBC580000E9320B0000"/>
+                      <Line Type="bytes" Address="0x0242f9e1" Value="41FFCD418D7D01E9E4190000"/>
+                      <Line Type="bytes" Address="0x024313d1" Value="E87ADC54FFE9F6120000"/>
+                      <Line Type="bytes" Address="0x024326d1" Value="038394000000E9450B0000"/>
+                      <Line Type="bytes" Address="0x02433221" Value="3DFFC99A3BE9B6060000"/>
+                      <Line Type="bytes" Address="0x024338e1" Value="0F862F030000E925030000"/>
+                      <Line Type="bytes" Address="0x02433c11" Value="B8FFC99A3BE9F6080000"/>
+                      <Line Type="bytes" Address="0x02434511" Value="898394000000E945020000"/>
+                      <Line Type="bytes" Address="0x02434761" Value="E93BA7FFFFE926110000"/>
+                      <Line Type="bytes" Address="0x02435891" Value="4489A390000000415DE9E20E0000"/>
+                      <Line Type="bytes" Address="0x02436781" Value="415C5BC3"/>
+                  </PatchList>
+              </Metadata>
+              <Metadata Title="Bloodborne" Name="no_r3_reset=1" Author="Dr3llll" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+                  <PatchList>
+                      <Line Type="bytes" Address="0x01c90d59" Value="90909090909090"/>
+                  </PatchList>
+              </Metadata>
+              <Metadata Title="Bloodborne" Name="physics_low=1" Note="Corpses resist movement by the player or other actions." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+                  <PatchList>
+                      <Line Type="bytes32" Address="0x01BF9463" Value="0x01010101"/>
+                      <Line Type="bytes32" Address="0x01BF9439" Value="0x3F000000"/>
+                  </PatchList>
+              </Metadata>
+          </Patch>
+          EOF
+
+          # [핵심 2] 렉 유발하는 원본 힙 패치 빌드는 과감히 스킵! 사장님의 3종 패치만 단독 빌드하게 제한
+          sed -i "s/\['Larger GX Per-Frame Command Heap'\]/\['region_unlock=1', 'doll_rebirth=1', 'no_r3_reset=1'\]/g" tools/android/build_patch_parts.py
+
+          mkdir -p new_patches
+          python3 tools/android/build_patch_parts.py --out new_patches --eboot out_eboot.elf --xml patches/Bloodborne.xml
+
+      # 파이썬 스크립트 대신 이거 한 줄만 넣으시면 됩니다.
+      - name: Nuke Catalog Hash to Bypass Rebuild
+        run: |
+          echo "" > BB_mod/assets/recomp/variants/CATALOG_HASH
+
+      - name: Direct Memory Patch Injection
+        run: |
+          # 1. 기존 patch-parts.txt는 사장님이 성공하셨던 '전부 w' 상태로 깔끔하게 원복합니다.
+          echo "" >> BB_mod/assets/recomp/variants/patch-parts.txt
+          cat << 'EOF' >> BB_mod/assets/recomp/variants/patch-parts.txt
+
+          group part:region_unlock=1 excl=region_unlock
+          w 1fb9190 b805000000c3
+          w 1fb8730 31c0c3909090909090909090909090
+          w 182c890 31c0c3909090909090909090909090
+
+          group part:doll_rebirth=1 excl=doll_rebirth
+          w 203a65c fd040000
+          w 203a674 edf6ffff
+          w 203a878 d932ffff
+          w 203ab21 8b8790000000c3
+          w 2039d11 0fb687ce000000c3
+          w 202db01 53415441554889fbe9e3030000
+          w 202def1 4189d4448bab90000000e9a10f0000
+          w 202eea1 4539e50f8ebc580000e9320b0000
+          w 202f9e1 41ffcd418d7d01e9e4190000
+          w 20313d1 e87adc54ffe9f6120000
+          w 20326d1 038394000000e9450b0000
+          w 2033221 3dffc99a3be9b6060000
+          w 20338e1 0f862f030000e925030000
+          w 2033c11 b8ffc99a3be9f6080000
+          w 2034511 898394000000e945020000
+          w 2034761 e93ba7ffffe926110000
+          w 2035891 4489a390000000415de9e20e0000
+          w 2036781 415c5bc3
+
+          group part:no_r3_reset=1 excl=no_r3_reset
+          w 1890d59 90909090909090
+
+          group part:physics_low=1 excl=physics_low
+          w 17f9463 01010101
+          w 17f9439 3f000000
+          EOF
+
+      - name: Inject into Runtime Payload & Install Backdoor Wrapper
+        run: |
+          mkdir -p payload_ext
+          tar -xzf BB_mod/assets/runtime.payload -C payload_ext
+
+          # 구동기 스크립트와 설정 파일에서 변수 교체
+          sed -i 's/debug_camera/region_unlock/g' payload_ext/bbport/run-bionic.sh
+          sed -i 's/debug_camera/region_unlock/g' payload_ext/bbport/bbport.default.ini
+
+          # 앱 설치 시 UI 토글 강제 ON 및 수직동기화(VSync) 강제 OFF
+          sed -i 's/region_unlock=0/region_unlock=1/g' payload_ext/bbport/bbport.default.ini
+          sed -i 's/vsync=0/vsync=0/g' payload_ext/bbport/bbport.default.ini
+
+          # 인형 환생 및 R3 카메라 리셋 방지 트리거 활성화
+          echo "doll_rebirth=1" >> payload_ext/bbport/bbport.default.ini
+          echo "no_r3_reset=1" >> payload_ext/bbport/bbport.default.ini
+          echo "physics_low=1" >> payload_ext/bbport/bbport.default.ini
+
+          # [🔥 하드코딩 디폴트 강제 주입 🔥]
+          echo "fps_limit=30" >> payload_ext/bbport/bbport.default.ini
+          echo "model_lod=1" >> payload_ext/bbport/bbport.default.ini
+		  echo "texture_quality=half" >> payload_ext/bbport/bbport.default.ini
+
+          # [🔥 족쇄 해제 및 하드코어 최적화 주입 🔥]
+          sed -i '1s/^/export BB_GPUCOMM_CPUS=6,7\nexport BB_VRAM_COPY_QUEUE=1\nexport BB_VRAM_COPY_CAP_MB=128\nexport BB_STAGING_KEEP_MB=32\nexport BB_UMA_CLASSES=index,vertex,constant\nexport BB_UMA_GRANULE_KB=8192\n/' payload_ext/bbport/run-bionic.sh
+
+          # [🔥 missing.log 생성: 2034766 추가 완료 🔥]
+          cat << 'EOF' > BB_mod/assets/recomp/variants/missing.log
+          0x203ab21
+          0x2039d11
+          0x202db01
+          0x202def1
+          0x202eea1
+          0x202f9e1
+          0x20313d1
+          0x20326d1
+          0x2033221
+          0x20338e1
+          0x2033c11
+          0x2034511
+          0x2034761
+          0x2035891
+          0x2036781
+          0x2033c16
+          0x2034766
+          EOF
+
+          # [🔥 핵심 2: 위치를 스스로 찾는 똑똑한 래퍼 스크립트 (.log 반영) 🔥]
+          mv BB_mod/lib/arm64-v8a/libbbrecomp.so BB_mod/lib/arm64-v8a/libbbrecomp_real.so
+
+          cat << 'EOF' > BB_mod/lib/arm64-v8a/libbbrecomp.so
+          #!/system/bin/sh
+
+          # 앱이 전달한 파라미터들 중 "--variants" 뒤에 오는 절대 경로를 낚아챕니다.
+          VARIANTS_DIR=""
+          PREV=""
+          for i in "$@"; do
+              if [ "$PREV" = "--variants" ]; then
+                  VARIANTS_DIR="$i"
+              fi
+              PREV="$i"
+          done
+
+          # 낚아챈 절대 경로에 missing.log를 붙여서 진짜 바이너리에 강제 주입!
+          exec "$(dirname "$0")/libbbrecomp_real.so" "$@" --extra-entries "${VARIANTS_DIR}/missing.log"
+          EOF
+
+          chmod +x BB_mod/lib/arm64-v8a/libbbrecomp.so
+
+          # 원본 힙 패치(.bin)와 새로 빌드한 3개의 .bin 패치 파일들 모두 안전하게 추가!
+          cp new_patches/*.bin payload_ext/bbport/patch-parts/
+
+          # 페이로드 재조립
+          cd payload_ext
+          tar -czf ../BB_mod/assets/runtime.payload bbport
+          cd ..
+          sha256sum BB_mod/assets/runtime.payload | awk '{print $1}' > BB_mod/assets/runtime.sha256
+
+      - name: Rebuild & Sign with Custom Keystore
+        run: |
+          java -jar apktool.jar b --use-aapt2 BB_mod -o unsigned.apk
+
+          keytool -genkeypair -v -keystore custom.keystore -alias bbhunter -keyalg RSA -keysize 2048 -validity 10000 -storepass "hunter2026" -keypass "hunter2026" -dname "CN=BBHunter, OU=Dev, O=KR, L=Seoul, S=Seoul, C=KR"
+
+          java -jar uber-signer.jar -a unsigned.apk --ks custom.keystore --ksAlias bbhunter --ksPass "hunter2026" --ksKeyPass "hunter2026" -o final_out
+          mv final_out/*.apk Bloodborne-Korean.apk
+
+      - name: Upload Custom APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bloodborne-Korean-APK
+          path: Bloodborne-Korean.apk
