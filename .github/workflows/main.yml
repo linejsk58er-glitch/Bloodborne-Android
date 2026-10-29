@@ -208,7 +208,7 @@ jobs:
           # [🔥 하드코딩 디폴트 강제 주입 🔥]
           echo "fps_limit=30" >> payload_ext/bbport/bbport.default.ini
           echo "model_lod=1" >> payload_ext/bbport/bbport.default.ini
-		  echo "texture_quality=half" >> payload_ext/bbport/bbport.default.ini
+          echo "texture_quality=half" >> payload_ext/bbport/bbport.default.ini
 
           # [🔥 족쇄 해제 및 하드코어 최적화 주입 🔥]
           sed -i '1s/^/export BB_GPUCOMM_CPUS=6,7\nexport BB_VRAM_COPY_QUEUE=1\nexport BB_VRAM_COPY_CAP_MB=128\nexport BB_STAGING_KEEP_MB=32\nexport BB_UMA_CLASSES=index,vertex,constant\nexport BB_UMA_GRANULE_KB=8192\n/' payload_ext/bbport/run-bionic.sh
