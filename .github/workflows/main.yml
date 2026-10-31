@@ -109,12 +109,6 @@ jobs:
                       <Line Type="bytes" Address="0x01c90d59" Value="90909090909090"/>
                   </PatchList>
               </Metadata>
-              <Metadata Title="Bloodborne" Name="physics_low=1" Note="Corpses resist movement by the player or other actions." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin">
-                  <PatchList>
-                      <Line Type="bytes32" Address="0x01BF9463" Value="0x01010101"/>
-                      <Line Type="bytes32" Address="0x01BF9439" Value="0x3F000000"/>
-                  </PatchList>
-              </Metadata>
           </Patch>
           EOF
 
@@ -158,10 +152,6 @@ jobs:
 
           group part:no_r3_reset=1 excl=no_r3_reset
           w 1890d59 90909090909090
-
-          group part:physics_low=1 excl=physics_low
-          w 17f9463 01010101
-          w 17f9439 3f000000
           EOF
 
       - name: Inject into Runtime Payload & Install Backdoor Wrapper
@@ -181,7 +171,6 @@ jobs:
 
           echo "doll_rebirth=1" >> payload_ext/bbport/bbport.default.ini
           echo "no_r3_reset=1" >> payload_ext/bbport/bbport.default.ini
-          echo "physics_low=1" >> payload_ext/bbport/bbport.default.ini
           echo "fps_limit=30" >> payload_ext/bbport/bbport.default.ini
           echo "model_lod=2" >> payload_ext/bbport/bbport.default.ini
           echo "texture_quality=full" >> payload_ext/bbport/bbport.default.ini
