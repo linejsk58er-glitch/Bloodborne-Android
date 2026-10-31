@@ -112,7 +112,7 @@ jobs:
           </Patch>
           EOF
 
-          sed -i "s/\['Larger GX Per-Frame Command Heap'\]/\['region_unlock=1', 'doll_rebirth=1', 'no_r3_reset=1', 'physics_low=1'\]/g" tools/android/build_patch_parts.py
+          sed -i "s/\['Larger GX Per-Frame Command Heap'\]/\['region_unlock=1', 'doll_rebirth=1', 'no_r3_reset=1'\]/g" tools/android/build_patch_parts.py
 
           mkdir -p new_patches
           python3 tools/android/build_patch_parts.py --out new_patches --eboot out_eboot.elf --xml patches/Bloodborne.xml
