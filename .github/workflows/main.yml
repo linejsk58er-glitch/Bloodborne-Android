@@ -191,6 +191,13 @@ jobs:
         run: |
           mkdir -p payload_ext
           tar -xzf BB_mod/assets/runtime.payload -C payload_ext
+		  
+		  # [🔥 핵심 3: 억지 60프레임 해제 코드 강제 주입 로직 원천 차단 (빈스킵) 🔥]
+          sed -i 's/patch_args="$patch_args --fallback-patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
+          sed -i 's/patch_args="$patch_args --patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
+          
+          # [🔥 설정창 꼼수 방지: 무조건 fps_limit=30 으로 하드코딩 🔥]
+          sed -i 's/fps_limit=$(setting fps_limit)/fps_limit=30/g' payload_ext/bbport/run-bionic.sh
 
           # 구동기 스크립트와 설정 파일에서 변수 교체
           sed -i 's/debug_camera/region_unlock/g' payload_ext/bbport/run-bionic.sh
@@ -207,7 +214,7 @@ jobs:
 
           # [🔥 하드코딩 디폴트 강제 주입 🔥]
           echo "fps_limit=30" >> payload_ext/bbport/bbport.default.ini
-          echo "model_lod=1" >> payload_ext/bbport/bbport.default.ini
+          echo "model_lod=2" >> payload_ext/bbport/bbport.default.ini
           echo "texture_quality=half" >> payload_ext/bbport/bbport.default.ini
 
           # [🔥 족쇄 해제 및 하드코어 최적화 주입 🔥]
