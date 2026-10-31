@@ -17,7 +17,6 @@ jobs:
           wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar -O apktool.jar
           wget -q https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar -O uber-signer.jar
 
-
       - name: Download Official APK
         run: |
           # =====================================================================
@@ -90,6 +89,10 @@ jobs:
           touch out_eboot.elf
           sed -i 's/segments = patches.eboot_segments(args.eboot.read_bytes())/segments = [(0, 0x10000000)]/g' tools/android/build_patch_parts.py
           sed -i 's/raise SystemExit/pass #/g' tools/android/build_patch_parts.py
+          
+          # [🔥 똥포팅충의 억지 60프레임 및 관련 땜빵 코드 원천 차단 (true -> false) 🔥]
+          sed -i 's/Name="Uncap FPS++"[^>]*isEnabled="true"/Name="Uncap FPS++" isEnabled="false"/g' patches/Bloodborne.xml
+          sed -i 's/Name="Sprint Fix (High FPS)"[^>]*isEnabled="true"/Name="Sprint Fix (High FPS)" isEnabled="false"/g' patches/Bloodborne.xml
 
           # [핵심 1] 3개 패치 모두 XML에 추가 (boot-linked.bin 영구 공구리 방지를 위해 isEnabled="false")
           sed -i 's/<\/Patch>//g' patches/Bloodborne.xml
@@ -143,7 +146,6 @@ jobs:
           mkdir -p new_patches
           python3 tools/android/build_patch_parts.py --out new_patches --eboot out_eboot.elf --xml patches/Bloodborne.xml
 
-      # 파이썬 스크립트 대신 이거 한 줄만 넣으시면 됩니다.
       - name: Nuke Catalog Hash to Bypass Rebuild
         run: |
           echo "" > BB_mod/assets/recomp/variants/CATALOG_HASH
@@ -191,7 +193,7 @@ jobs:
         run: |
           mkdir -p payload_ext
           tar -xzf BB_mod/assets/runtime.payload -C payload_ext
-		  
+          
           # [🔥 핵심 3: 억지 60프레임 해제 코드 강제 주입 로직 원천 차단 (빈스킵) 🔥]
           sed -i 's/patch_args="$patch_args --fallback-patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
           sed -i 's/patch_args="$patch_args --patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
