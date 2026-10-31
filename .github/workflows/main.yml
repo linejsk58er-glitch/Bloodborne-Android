@@ -109,10 +109,17 @@ jobs:
                       <Line Type="bytes" Address="0x01c90d59" Value="90909090909090"/>
                   </PatchList>
               </Metadata>
+              <Metadata Title="Bloodborne" Name="physics_low=1" Note="Corpses resist movement by the player or other actions." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin">
+                  <PatchList>
+                      <Line Type="bytes32" Address="0x01BF9463" Value="0x01010101"/>
+                      <Line Type="bytes32" Address="0x01BF9439" Value="0x3F000000"/>
+                  </PatchList>
+              </Metadata>
           </Patch>
           EOF
 
-          sed -i "s/\['Larger GX Per-Frame Command Heap'\]/\['region_unlock=1', 'doll_rebirth=1', 'no_r3_reset=1'\]/g" tools/android/build_patch_parts.py
+          # [🔥 GX 힙 패치 부활 🔥] 크래시 방어 코드가 생겼으므로 힙 확장 패치를 정상적으로 포함시킵니다.
+          sed -i "s/\['Larger GX Per-Frame Command Heap'\]/\['Larger GX Per-Frame Command Heap', 'region_unlock=1', 'doll_rebirth=1', 'no_r3_reset=1', 'physics_low=1'\]/g" tools/android/build_patch_parts.py
 
           mkdir -p new_patches
           python3 tools/android/build_patch_parts.py --out new_patches --eboot out_eboot.elf --xml patches/Bloodborne.xml
@@ -152,6 +159,10 @@ jobs:
 
           group part:no_r3_reset=1 excl=no_r3_reset
           w 1890d59 90909090909090
+
+          group part:physics_low=1 excl=physics_low
+          w 17f9463 01010101
+          w 17f9439 3f000000
           EOF
 
       - name: Inject into Runtime Payload & Install Backdoor Wrapper
@@ -161,7 +172,7 @@ jobs:
           
           cp new_patches/*.bin payload_ext/bbport/patch-parts/
           
-          # [🔥 빈스킵을 통한 60프레임 원천 차단 (문법 에러 유발하는 sed 삭제 완료) 🔥]
+          # [🔥 빈스킵을 통한 60프레임 원천 차단 (문법 에러 방지) 🔥]
           > payload_ext/bbport/patch-parts/fps=uncap.bin
           
           sed -i 's/fps_limit=$(setting fps_limit)/fps_limit=30/g' payload_ext/bbport/run-bionic.sh
@@ -171,15 +182,21 @@ jobs:
 
           echo "doll_rebirth=1" >> payload_ext/bbport/bbport.default.ini
           echo "no_r3_reset=1" >> payload_ext/bbport/bbport.default.ini
+          echo "physics_low=1" >> payload_ext/bbport/bbport.default.ini
           echo "fps_limit=30" >> payload_ext/bbport/bbport.default.ini
           echo "model_lod=2" >> payload_ext/bbport/bbport.default.ini
-          echo "texture_quality=full" >> payload_ext/bbport/bbport.default.ini
-
-          sed -i '1s/^/export BB_GPUCOMM_CPUS=6,7\nexport BB_VRAM_COPY_QUEUE=1\nexport BB_VRAM_COPY_CAP_MB=128\nexport BB_STAGING_KEEP_MB=32\nexport BB_UMA_CLASSES=index,vertex,constant\nexport BB_UMA_GRANULE_KB=8192\nexport BB_UPSCALER=off\nexport BB_UPSCALE_PRESET=0\nexport BB_LARGE_HEAPS=1\nexport BB_DMEM_MB_HIGH=9152\nexport BB_TEXTURE_QUALITY=full\n/' payload_ext/bbport/run-bionic.sh
-
-          sed -i 's/if \[ -n "$mem_kb" \] && \[ "$mem_kb" -le $((12 \* 1024 \* 1024)) \]; then BB_TEXTURE_QUALITY=half; else BB_TEXTURE_QUALITY=full; fi/BB_TEXTURE_QUALITY=full/g' payload_ext/bbport/run-bionic.sh
           
-          sed -i 's/case $upscaler in off|gsr2|fsr3) ;; '"'"''"'"') upscaler=gsr2 ;; \*) upscaler=fsr3 ;; esac/upscaler=off/g' payload_ext/bbport/run-bionic.sh
+          # [🔥 프레임 방어를 위해 텍스처 Quality Half 주입 🔥]
+          echo "texture_quality=half" >> payload_ext/bbport/bbport.default.ini
+
+          # [🔥 GSR 2 하드코어 최적화 주입 (텍스처 Half, 고스팅 완화 차단 포함) 🔥]
+          sed -i '1s/^/export BB_GPUCOMM_CPUS=6,7\nexport BB_VRAM_COPY_QUEUE=1\nexport BB_VRAM_COPY_CAP_MB=128\nexport BB_STAGING_KEEP_MB=32\nexport BB_UMA_CLASSES=index,vertex,constant\nexport BB_UMA_GRANULE_KB=8192\nexport BB_UPSCALER=gsr2\nexport BB_UPSCALE_PRESET=3\nexport BB_LARGE_HEAPS=1\nexport BB_DMEM_MB_HIGH=9152\nexport BB_TEXTURE_QUALITY=half\nexport BB_OBJECT_MOTION=0\nexport BB_REACTIVE=0\n/' payload_ext/bbport/run-bionic.sh
+
+          # [🔥 12GB 램 체크 완전 무력화 (무조건 Half 고정) 🔥]
+          sed -i 's/if \[ -n "$mem_kb" \] && \[ "$mem_kb" -le $((12 \* 1024 \* 1024)) \]; then BB_TEXTURE_QUALITY=half; else BB_TEXTURE_QUALITY=full; fi/BB_TEXTURE_QUALITY=half/g' payload_ext/bbport/run-bionic.sh
+          
+          # 업스케일러 무조건 gsr2 고정
+          sed -i 's/case $upscaler in off|gsr2|fsr3) ;; '"'"''"'"') upscaler=gsr2 ;; \*) upscaler=fsr3 ;; esac/upscaler=gsr2/g' payload_ext/bbport/run-bionic.sh
 
           cat << 'EOF' > BB_mod/assets/recomp/variants/missing.log
           0x203ab21
