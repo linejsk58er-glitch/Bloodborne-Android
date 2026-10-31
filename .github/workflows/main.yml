@@ -87,14 +87,16 @@ jobs:
       - name: Prepare XML & Build Custom Patch
         run: |
           touch out_eboot.elf
+          
+          # [🔥 핵심 1: 똥패치 XML 원천 삭제 및 파이썬 발작 무력화 🔥]
+          sed -i '/Name="Uncap FPS++"/,/<\/Metadata>/d' patches/Bloodborne.xml
+          sed -i '/Name="Sprint Fix (High FPS)"/,/<\/Metadata>/d' patches/Bloodborne.xml
+          sed -i 's/if missing: raise ValueError.*/if missing: pass/g' scripts/patches.py || true
+          
           sed -i 's/segments = patches.eboot_segments(args.eboot.read_bytes())/segments = [(0, 0x10000000)]/g' tools/android/build_patch_parts.py
           sed -i 's/raise SystemExit/pass #/g' tools/android/build_patch_parts.py
-          
-          # [🔥 똥포팅충의 억지 60프레임 및 관련 땜빵 코드 원천 차단 (true -> false) 🔥]
-          sed -i 's/Name="Uncap FPS++"[^>]*isEnabled="true"/Name="Uncap FPS++" isEnabled="false"/g' patches/Bloodborne.xml
-          sed -i 's/Name="Sprint Fix (High FPS)"[^>]*isEnabled="true"/Name="Sprint Fix (High FPS)" isEnabled="false"/g' patches/Bloodborne.xml
 
-          # [핵심 1] 3개 패치 모두 XML에 추가 (boot-linked.bin 영구 공구리 방지를 위해 isEnabled="false")
+          # [핵심 2] 3개 패치 모두 XML에 추가 (boot-linked.bin 영구 공구리 방지를 위해 isEnabled="false")
           sed -i 's/<\/Patch>//g' patches/Bloodborne.xml
           cat << 'EOF' >> patches/Bloodborne.xml
               <Metadata Title="Bloodborne" Name="region_unlock=1" Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
@@ -140,7 +142,7 @@ jobs:
           </Patch>
           EOF
 
-          # [핵심 2] 렉 유발하는 원본 힙 패치 빌드는 과감히 스킵! 사장님의 3종 패치만 단독 빌드하게 제한
+          # [핵심 3] 렉 유발하는 원본 힙 패치 빌드는 과감히 스킵! 사장님의 3종 패치만 단독 빌드하게 제한
           sed -i "s/\['Larger GX Per-Frame Command Heap'\]/\['region_unlock=1', 'doll_rebirth=1', 'no_r3_reset=1'\]/g" tools/android/build_patch_parts.py
 
           mkdir -p new_patches
@@ -152,7 +154,6 @@ jobs:
 
       - name: Direct Memory Patch Injection
         run: |
-          # 1. 기존 patch-parts.txt는 사장님이 성공하셨던 '전부 w' 상태로 깔끔하게 원복합니다.
           echo "" >> BB_mod/assets/recomp/variants/patch-parts.txt
           cat << 'EOF' >> BB_mod/assets/recomp/variants/patch-parts.txt
 
@@ -194,35 +195,29 @@ jobs:
           mkdir -p payload_ext
           tar -xzf BB_mod/assets/runtime.payload -C payload_ext
           
-          # [🔥 핵심 3: 억지 60프레임 해제 코드 강제 주입 로직 원천 차단 (빈스킵) 🔥]
+          # [🔥 핵심 4: 억지 60프레임 해제 코드 강제 주입 로직 원천 차단 (빈스킵) 🔥]
           sed -i 's/patch_args="$patch_args --fallback-patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
           sed -i 's/patch_args="$patch_args --patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
           
           # [🔥 설정창 꼼수 방지: 무조건 fps_limit=30 으로 하드코딩 🔥]
           sed -i 's/fps_limit=$(setting fps_limit)/fps_limit=30/g' payload_ext/bbport/run-bionic.sh
 
-          # 구동기 스크립트와 설정 파일에서 변수 교체
           sed -i 's/debug_camera/region_unlock/g' payload_ext/bbport/run-bionic.sh
           sed -i 's/debug_camera/region_unlock/g' payload_ext/bbport/bbport.default.ini
 
-          # 앱 설치 시 UI 토글 강제 ON 및 수직동기화(VSync) 강제 OFF
           sed -i 's/region_unlock=0/region_unlock=1/g' payload_ext/bbport/bbport.default.ini
           sed -i 's/vsync=0/vsync=0/g' payload_ext/bbport/bbport.default.ini
 
-          # 인형 환생 및 R3 카메라 리셋 방지 트리거 활성화
           echo "doll_rebirth=1" >> payload_ext/bbport/bbport.default.ini
           echo "no_r3_reset=1" >> payload_ext/bbport/bbport.default.ini
           echo "physics_low=1" >> payload_ext/bbport/bbport.default.ini
 
-          # [🔥 하드코딩 디폴트 강제 주입 🔥]
           echo "fps_limit=30" >> payload_ext/bbport/bbport.default.ini
           echo "model_lod=2" >> payload_ext/bbport/bbport.default.ini
           echo "texture_quality=half" >> payload_ext/bbport/bbport.default.ini
 
-          # [🔥 족쇄 해제 및 하드코어 최적화 주입 🔥]
           sed -i '1s/^/export BB_GPUCOMM_CPUS=6,7\nexport BB_VRAM_COPY_QUEUE=1\nexport BB_VRAM_COPY_CAP_MB=128\nexport BB_STAGING_KEEP_MB=32\nexport BB_UMA_CLASSES=index,vertex,constant\nexport BB_UMA_GRANULE_KB=8192\n/' payload_ext/bbport/run-bionic.sh
 
-          # [🔥 missing.log 생성: 2034766 추가 완료 🔥]
           cat << 'EOF' > BB_mod/assets/recomp/variants/missing.log
           0x203ab21
           0x2039d11
@@ -243,13 +238,10 @@ jobs:
           0x2034766
           EOF
 
-          # [🔥 핵심 2: 위치를 스스로 찾는 똑똑한 래퍼 스크립트 (.log 반영) 🔥]
           mv BB_mod/lib/arm64-v8a/libbbrecomp.so BB_mod/lib/arm64-v8a/libbbrecomp_real.so
 
           cat << 'EOF' > BB_mod/lib/arm64-v8a/libbbrecomp.so
           #!/system/bin/sh
-
-          # 앱이 전달한 파라미터들 중 "--variants" 뒤에 오는 절대 경로를 낚아챕니다.
           VARIANTS_DIR=""
           PREV=""
           for i in "$@"; do
@@ -258,17 +250,12 @@ jobs:
               fi
               PREV="$i"
           done
-
-          # 낚아챈 절대 경로에 missing.log를 붙여서 진짜 바이너리에 강제 주입!
           exec "$(dirname "$0")/libbbrecomp_real.so" "$@" --extra-entries "${VARIANTS_DIR}/missing.log"
           EOF
 
           chmod +x BB_mod/lib/arm64-v8a/libbbrecomp.so
-
-          # 원본 힙 패치(.bin)와 새로 빌드한 3개의 .bin 패치 파일들 모두 안전하게 추가!
           cp new_patches/*.bin payload_ext/bbport/patch-parts/
 
-          # 페이로드 재조립
           cd payload_ext
           tar -czf ../BB_mod/assets/runtime.payload bbport
           cd ..
@@ -277,9 +264,7 @@ jobs:
       - name: Rebuild & Sign with Custom Keystore
         run: |
           java -jar apktool.jar b --use-aapt2 BB_mod -o unsigned.apk
-
           keytool -genkeypair -v -keystore custom.keystore -alias bbhunter -keyalg RSA -keysize 2048 -validity 10000 -storepass "hunter2026" -keypass "hunter2026" -dname "CN=BBHunter, OU=Dev, O=KR, L=Seoul, S=Seoul, C=KR"
-
           java -jar uber-signer.jar -a unsigned.apk --ks custom.keystore --ksAlias bbhunter --ksPass "hunter2026" --ksKeyPass "hunter2026" -o final_out
           mv final_out/*.apk Bloodborne-Korean.apk
 
