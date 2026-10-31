@@ -192,7 +192,7 @@ jobs:
           mkdir -p payload_ext
           tar -xzf BB_mod/assets/runtime.payload -C payload_ext
 		  
-		  # [🔥 핵심 3: 억지 60프레임 해제 코드 강제 주입 로직 원천 차단 (빈스킵) 🔥]
+          # [🔥 핵심 3: 억지 60프레임 해제 코드 강제 주입 로직 원천 차단 (빈스킵) 🔥]
           sed -i 's/patch_args="$patch_args --fallback-patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
           sed -i 's/patch_args="$patch_args --patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
           
