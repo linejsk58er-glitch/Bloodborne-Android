@@ -74,7 +74,6 @@ jobs:
           sed -i 's/raise SystemExit/pass #/g' tools/android/build_patch_parts.py
 
           # [🔥 핵심 1: Python 스크립트 에러 방지 🔥]
-          # 빌더가 'Uncap FPS++'와 'Sprint Fix'를 찾지 않도록 리스트 자체를 비워버립니다.
           sed -i "s/'uncap': \['Uncap FPS++', 'Sprint Fix (High FPS)'\]/'uncap': \[\]/g" scripts/patches.py
 
           # XML 구조 조립 (isEnabled="false" 속성 제거, 무조건 활성화되도록 변경)
@@ -137,7 +136,6 @@ jobs:
         run: |
           echo "" >> BB_mod/assets/recomp/variants/patch-parts.txt
           cat << 'EOF' >> BB_mod/assets/recomp/variants/patch-parts.txt
-
           group part:region_unlock=1 excl=region_unlock
           w 1fb9190 b805000000c3
           w 1fb8730 31c0c3909090909090909090909090
@@ -170,20 +168,13 @@ jobs:
           w 17f9463 01010101
           w 17f9439 3f000000
           EOF
-		  
+
       - name: Nuke Language UI from Settings Menu
         run: |
           # SettingsDialog.smali 파일을 찾아서 언어 선택 UI(Language) 생성 부분을 싹 다 날려버립니다.
-          # Smali 코드에서 "Language" 문자열을 레이아웃에 추가하는 로직과 RadioGroup을 화면에 붙이는 부분을 주석 처리합니다.
-          
           for smali_file in $(find BB_mod -name "SettingsDialog.smali"); do
-              # 1. "Language" 제목을 띄우는 heading() 호출부 무력화
               sed -i '/const-string.*"Language"/, /invoke-direct.*heading/ s/^/# /' "$smali_file"
-              
-              # 2. LANG_NAMES 배열을 가져와서 choices() 라디오 버튼 그룹을 생성하는 부분 무력화
               sed -i '/sget-object.*LANG_NAMES/, /invoke-direct.*choices/ s/^/# /' "$smali_file"
-              
-              # 3. 언어 선택 RadioGroup 뷰를 부모 레이아웃(box)에 추가하는 부분 무력화
               sed -i '/invoke-virtual.*addView.*RadioGroup/ s/^/# /' "$smali_file"
           done
 
