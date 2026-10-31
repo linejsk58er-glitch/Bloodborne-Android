@@ -19,15 +19,12 @@ jobs:
 
       - name: Download Official APK
         run: |
-          # =====================================================================
-          # [선택 1] 특정 버전 고정 다운로드 (현재 활성화됨 - 2.1.2 버전)
-          # =====================================================================
-          TARGET_URL=$(curl -s https://api.github.com/repos/ducvd89/Bloodborne-Android/releases/tags/android-2.1.2 | grep "browser_download_url.*\.apk" | cut -d '"' -f 4 | head -n 1)
-          wget -q $TARGET_URL -O original.apk
+          # 2.2.0 최신 버전 최적화
+          LATEST_URL=$(curl -s https://api.github.com/repos/ducvd89/Bloodborne-Android/releases/latest | grep "browser_download_url.*\.apk" | cut -d '"' -f 4 | head -n 1)
+          wget -q $LATEST_URL -O original.apk
 
       - name: Decompile APK & Smali Hardcode Hack
         run: |
-          # [★apktool.jar 없어서 터지는 거 방지용 다운로드 추가★]
           curl -L -o apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
           java -jar apktool.jar d original.apk -o BB_mod
 
@@ -42,14 +39,13 @@ jobs:
           .super Ljava/lang/Object;
           EOF
 
-          # [🔥 야남 전용 슬로우모션 방지 개조 🔥]
+          # 야남 전용 슬로우모션 방지 개조
           find BB_mod -name "SettingsDialog*.smali" -exec sed -i 's/"20"/"10"/g' {} + || true
 
       - name: Force On-Screen Controller Default to True
         run: |
           cat << 'EOF' > patch_controller.py
           import re, glob
-
           for smali_file in glob.glob("BB_mod/smali*/ro/cobrabm/fexdroid/MainActivity*.smali"):
               with open(smali_file, "r") as f:
                   code = f.read()
@@ -76,22 +72,22 @@ jobs:
           touch out_eboot.elf
           sed -i 's/segments = patches.eboot_segments(args.eboot.read_bytes())/segments = [(0, 0x10000000)]/g' tools/android/build_patch_parts.py
           sed -i 's/raise SystemExit/pass #/g' tools/android/build_patch_parts.py
-          
-          # [🔥 똥포팅충의 억지 60프레임 및 관련 땜빵 코드 원천 차단 (true -> false) 🔥]
-          sed -i 's/Name="Uncap FPS++"[^>]*isEnabled="true"/Name="Uncap FPS++" isEnabled="false"/g' patches/Bloodborne.xml
-          sed -i 's/Name="Sprint Fix (High FPS)"[^>]*isEnabled="true"/Name="Sprint Fix (High FPS)" isEnabled="false"/g' patches/Bloodborne.xml
 
-          # [핵심 1] 3개 패치 모두 XML에 추가
+          # [🔥 핵심 1: Python 스크립트 에러 방지 🔥]
+          # 빌더가 'Uncap FPS++'와 'Sprint Fix'를 찾지 않도록 리스트 자체를 비워버립니다.
+          sed -i "s/'uncap': \['Uncap FPS++', 'Sprint Fix (High FPS)'\]/'uncap': \[\]/g" scripts/patches.py
+
+          # XML 구조 조립 (isEnabled="false" 속성 제거, 무조건 활성화되도록 변경)
           sed -i 's/<\/Patch>//g' patches/Bloodborne.xml
           cat << 'EOF' >> patches/Bloodborne.xml
-              <Metadata Title="Bloodborne" Name="region_unlock=1" Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+              <Metadata Title="Bloodborne" Name="region_unlock=1" Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin">
                   <PatchList>
                       <Line Type="bytes" Address="0x023b9190" Value="b805000000c3"/>
                       <Line Type="bytes" Address="0x023B8730" Value="31C0C3909090909090909090909090"/>
                       <Line Type="bytes" Address="0x01C2C890" Value="31C0C3909090909090909090909090"/>
                   </PatchList>
               </Metadata>
-              <Metadata Title="Bloodborne" Name="doll_rebirth=1" Author="VVV212" PatchVer="1.0.2" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+              <Metadata Title="Bloodborne" Name="doll_rebirth=1" Author="VVV212" PatchVer="1.0.2" AppVer="01.09" AppElf="eboot.bin">
                   <PatchList>
                       <Line Type="bytes" Address="0x0243a65c" Value="FD040000"/>
                       <Line Type="bytes" Address="0x0243a674" Value="EDF6FFFF"/>
@@ -113,12 +109,12 @@ jobs:
                       <Line Type="bytes" Address="0x02436781" Value="415C5BC3"/>
                   </PatchList>
               </Metadata>
-              <Metadata Title="Bloodborne" Name="no_r3_reset=1" Author="Dr3llll" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+              <Metadata Title="Bloodborne" Name="no_r3_reset=1" Author="Dr3llll" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin">
                   <PatchList>
                       <Line Type="bytes" Address="0x01c90d59" Value="90909090909090"/>
                   </PatchList>
               </Metadata>
-              <Metadata Title="Bloodborne" Name="physics_low=1" Note="Corpses resist movement by the player or other actions." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+              <Metadata Title="Bloodborne" Name="physics_low=1" Note="Corpses resist movement by the player or other actions." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin">
                   <PatchList>
                       <Line Type="bytes32" Address="0x01BF9463" Value="0x01010101"/>
                       <Line Type="bytes32" Address="0x01BF9439" Value="0x3F000000"/>
@@ -127,8 +123,8 @@ jobs:
           </Patch>
           EOF
 
-          # [핵심 2] 렉 유발하는 원본 힙 패치 빌드는 스킵, 사장님 패치 3종 단독 빌드
-          sed -i "s/\['Larger GX Per-Frame Command Heap'\]/\['region_unlock=1', 'doll_rebirth=1', 'no_r3_reset=1'\]/g" tools/android/build_patch_parts.py
+          # 빌드 타겟 변경
+          sed -i "s/\['Larger GX Per-Frame Command Heap'\]/\['region_unlock=1', 'doll_rebirth=1', 'no_r3_reset=1', 'physics_low=1'\]/g" tools/android/build_patch_parts.py
 
           mkdir -p new_patches
           python3 tools/android/build_patch_parts.py --out new_patches --eboot out_eboot.elf --xml patches/Bloodborne.xml
@@ -180,40 +176,35 @@ jobs:
           mkdir -p payload_ext
           tar -xzf BB_mod/assets/runtime.payload -C payload_ext
           
-          # [🔥 핵심 3: 억지 60프레임 해제 코드 강제 주입 로직 원천 차단 🔥]
+          cp new_patches/*.bin payload_ext/bbport/patch-parts/
+          
+          # [🔥 빈스킵을 통한 60프레임 원천 차단 🔥]
+          > payload_ext/bbport/patch-parts/fps=uncap.bin
           sed -i 's/patch_args="$patch_args --fallback-patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
           sed -i 's/patch_args="$patch_args --patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
-          
-          # [🔥 설정창 꼼수 방지: 무조건 fps_limit=30 으로 하드코딩 🔥]
           sed -i 's/fps_limit=$(setting fps_limit)/fps_limit=30/g' payload_ext/bbport/run-bionic.sh
 
-          # 구동기 스크립트와 설정 파일에서 변수 교체
           sed -i 's/debug_camera/region_unlock/g' payload_ext/bbport/run-bionic.sh
           sed -i 's/debug_camera/region_unlock/g' payload_ext/bbport/bbport.default.ini
-
-          # 앱 설치 시 UI 토글 강제 ON 및 수직동기화(VSync) 강제 OFF
           sed -i 's/region_unlock=0/region_unlock=1/g' payload_ext/bbport/bbport.default.ini
           sed -i 's/vsync=0/vsync=0/g' payload_ext/bbport/bbport.default.ini
 
-          # 인형 환생 및 R3 카메라 리셋 방지 트리거 활성화
           echo "doll_rebirth=1" >> payload_ext/bbport/bbport.default.ini
           echo "no_r3_reset=1" >> payload_ext/bbport/bbport.default.ini
           echo "physics_low=1" >> payload_ext/bbport/bbport.default.ini
-
-          # [🔥 하드코딩 디폴트 강제 주입 🔥]
           echo "fps_limit=30" >> payload_ext/bbport/bbport.default.ini
           echo "model_lod=2" >> payload_ext/bbport/bbport.default.ini
-          sed -i 's/texture_quality=half/texture_quality=full/g' payload_ext/bbport/bbport.default.ini
+          echo "texture_quality=full" >> payload_ext/bbport/bbport.default.ini
 
-          # [🔥 2.2.0 똥패치 무력화 및 하드코어 최적화 주입 🔥]
-          # 1. GSR2 오프, 2. 프레임 드랍 막는 직접 메모리(9.1GB) 및 힙 확장, 3. 텍스처 무조건 풀옵
+          # [🔥 2.2.0 하드코어 최적화 주입 (GSR2 강제 오프, 램/힙 최대 할당) 🔥]
           sed -i '1s/^/export BB_GPUCOMM_CPUS=6,7\nexport BB_VRAM_COPY_QUEUE=1\nexport BB_VRAM_COPY_CAP_MB=128\nexport BB_STAGING_KEEP_MB=32\nexport BB_UMA_CLASSES=index,vertex,constant\nexport BB_UMA_GRANULE_KB=8192\nexport BB_UPSCALER=off\nexport BB_UPSCALE_PRESET=0\nexport BB_LARGE_HEAPS=1\nexport BB_DMEM_MB_HIGH=9152\nexport BB_TEXTURE_QUALITY=full\n/' payload_ext/bbport/run-bionic.sh
 
-          # [🔥 2.2.0 텍스처/업스케일러 깎아먹기 로직 쉘단에서 제거 🔥]
+          # 12GB 램 체크 너프 썰기
           sed -i 's/if \[ -n "$mem_kb" \] && \[ "$mem_kb" -le $((12 \* 1024 \* 1024)) \]; then BB_TEXTURE_QUALITY=half; else BB_TEXTURE_QUALITY=full; fi/BB_TEXTURE_QUALITY=full/g' payload_ext/bbport/run-bionic.sh
+          
+          # 업스케일러 무조건 off 고정
           sed -i 's/case $upscaler in off|gsr2|fsr3) ;; '"'"''"'"') upscaler=gsr2 ;; \*) upscaler=fsr3 ;; esac/upscaler=off/g' payload_ext/bbport/run-bionic.sh
 
-          # [🔥 missing.log 생성 🔥]
           cat << 'EOF' > BB_mod/assets/recomp/variants/missing.log
           0x203ab21
           0x2039d11
@@ -234,12 +225,10 @@ jobs:
           0x2034766
           EOF
 
-          # [🔥 핵심 2: 위치를 스스로 찾는 똑똑한 래퍼 스크립트 🔥]
           mv BB_mod/lib/arm64-v8a/libbbrecomp.so BB_mod/lib/arm64-v8a/libbbrecomp_real.so
 
           cat << 'EOF' > BB_mod/lib/arm64-v8a/libbbrecomp.so
           #!/system/bin/sh
-
           VARIANTS_DIR=""
           PREV=""
           for i in "$@"; do
@@ -248,14 +237,11 @@ jobs:
               fi
               PREV="$i"
           done
-
           exec "$(dirname "$0")/libbbrecomp_real.so" "$@" --extra-entries "${VARIANTS_DIR}/missing.log"
           EOF
 
           chmod +x BB_mod/lib/arm64-v8a/libbbrecomp.so
 
-          # 패치 복사 및 페이로드 재조립
-          cp new_patches/*.bin payload_ext/bbport/patch-parts/
           cd payload_ext
           tar -czf ../BB_mod/assets/runtime.payload bbport
           cd ..
@@ -264,9 +250,7 @@ jobs:
       - name: Rebuild & Sign with Custom Keystore
         run: |
           java -jar apktool.jar b --use-aapt2 BB_mod -o unsigned.apk
-
           keytool -genkeypair -v -keystore custom.keystore -alias bbhunter -keyalg RSA -keysize 2048 -validity 10000 -storepass "hunter2026" -keypass "hunter2026" -dname "CN=BBHunter, OU=Dev, O=KR, L=Seoul, S=Seoul, C=KR"
-
           java -jar uber-signer.jar -a unsigned.apk --ks custom.keystore --ksAlias bbhunter --ksPass "hunter2026" --ksKeyPass "hunter2026" -o final_out
           mv final_out/*.apk Bloodborne-Korean.apk
 
