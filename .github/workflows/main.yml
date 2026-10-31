@@ -19,7 +19,6 @@ jobs:
 
       - name: Download Official APK
         run: |
-          # 2.2.0 최신 버전 최적화
           LATEST_URL=$(curl -s https://api.github.com/repos/ducvd89/Bloodborne-Android/releases/latest | grep "browser_download_url.*\.apk" | cut -d '"' -f 4 | head -n 1)
           wget -q $LATEST_URL -O original.apk
 
@@ -39,7 +38,6 @@ jobs:
           .super Ljava/lang/Object;
           EOF
 
-          # 야남 전용 슬로우모션 방지 개조
           find BB_mod -name "SettingsDialog*.smali" -exec sed -i 's/"20"/"10"/g' {} + || true
 
       - name: Force On-Screen Controller Default to True
@@ -73,10 +71,8 @@ jobs:
           sed -i 's/segments = patches.eboot_segments(args.eboot.read_bytes())/segments = [(0, 0x10000000)]/g' tools/android/build_patch_parts.py
           sed -i 's/raise SystemExit/pass #/g' tools/android/build_patch_parts.py
 
-          # [🔥 핵심 1: Python 스크립트 에러 방지 🔥]
           sed -i "s/'uncap': \['Uncap FPS++', 'Sprint Fix (High FPS)'\]/'uncap': \[\]/g" scripts/patches.py
 
-          # XML 구조 조립 (isEnabled="false" 속성 제거, 무조건 활성화되도록 변경)
           sed -i 's/<\/Patch>//g' patches/Bloodborne.xml
           cat << 'EOF' >> patches/Bloodborne.xml
               <Metadata Title="Bloodborne" Name="region_unlock=1" Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin">
@@ -122,7 +118,6 @@ jobs:
           </Patch>
           EOF
 
-          # 빌드 타겟 변경
           sed -i "s/\['Larger GX Per-Frame Command Heap'\]/\['region_unlock=1', 'doll_rebirth=1', 'no_r3_reset=1', 'physics_low=1'\]/g" tools/android/build_patch_parts.py
 
           mkdir -p new_patches
@@ -169,7 +164,6 @@ jobs:
           w 17f9439 3f000000
           EOF
 
-
       - name: Inject into Runtime Payload & Install Backdoor Wrapper
         run: |
           mkdir -p payload_ext
@@ -177,10 +171,9 @@ jobs:
           
           cp new_patches/*.bin payload_ext/bbport/patch-parts/
           
-          # [🔥 빈스킵을 통한 60프레임 원천 차단 🔥]
+          # [🔥 빈스킵을 통한 60프레임 원천 차단 (문법 에러 유발하는 sed 삭제 완료) 🔥]
           > payload_ext/bbport/patch-parts/fps=uncap.bin
-          sed -i 's/patch_args="$patch_args --fallback-patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
-          sed -i 's/patch_args="$patch_args --patches $parts\/fps=uncap.bin"/# NUKED_BY_BBHUNTER/g' payload_ext/bbport/run-bionic.sh
+          
           sed -i 's/fps_limit=$(setting fps_limit)/fps_limit=30/g' payload_ext/bbport/run-bionic.sh
 
           sed -i 's/region_unlock=0/region_unlock=1/g' payload_ext/bbport/bbport.default.ini
@@ -193,13 +186,10 @@ jobs:
           echo "model_lod=2" >> payload_ext/bbport/bbport.default.ini
           echo "texture_quality=full" >> payload_ext/bbport/bbport.default.ini
 
-          # [🔥 2.2.0 하드코어 최적화 주입 (GSR2 강제 오프, 램/힙 최대 할당) 🔥]
           sed -i '1s/^/export BB_GPUCOMM_CPUS=6,7\nexport BB_VRAM_COPY_QUEUE=1\nexport BB_VRAM_COPY_CAP_MB=128\nexport BB_STAGING_KEEP_MB=32\nexport BB_UMA_CLASSES=index,vertex,constant\nexport BB_UMA_GRANULE_KB=8192\nexport BB_UPSCALER=off\nexport BB_UPSCALE_PRESET=0\nexport BB_LARGE_HEAPS=1\nexport BB_DMEM_MB_HIGH=9152\nexport BB_TEXTURE_QUALITY=full\n/' payload_ext/bbport/run-bionic.sh
 
-          # 12GB 램 체크 너프 썰기
           sed -i 's/if \[ -n "$mem_kb" \] && \[ "$mem_kb" -le $((12 \* 1024 \* 1024)) \]; then BB_TEXTURE_QUALITY=half; else BB_TEXTURE_QUALITY=full; fi/BB_TEXTURE_QUALITY=full/g' payload_ext/bbport/run-bionic.sh
           
-          # 업스케일러 무조건 off 고정
           sed -i 's/case $upscaler in off|gsr2|fsr3) ;; '"'"''"'"') upscaler=gsr2 ;; \*) upscaler=fsr3 ;; esac/upscaler=off/g' payload_ext/bbport/run-bionic.sh
 
           cat << 'EOF' > BB_mod/assets/recomp/variants/missing.log
