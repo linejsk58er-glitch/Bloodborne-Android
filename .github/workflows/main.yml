@@ -169,14 +169,6 @@ jobs:
           w 17f9439 3f000000
           EOF
 
-      - name: Nuke Language UI from Settings Menu
-        run: |
-          # SettingsDialog.smali 파일을 찾아서 언어 선택 UI(Language) 생성 부분을 싹 다 날려버립니다.
-          for smali_file in $(find BB_mod -name "SettingsDialog.smali"); do
-              sed -i '/const-string.*"Language"/, /invoke-direct.*heading/ s/^/# /' "$smali_file"
-              sed -i '/sget-object.*LANG_NAMES/, /invoke-direct.*choices/ s/^/# /' "$smali_file"
-              sed -i '/invoke-virtual.*addView.*RadioGroup/ s/^/# /' "$smali_file"
-          done
 
       - name: Inject into Runtime Payload & Install Backdoor Wrapper
         run: |
